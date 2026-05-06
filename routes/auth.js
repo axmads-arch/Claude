@@ -21,10 +21,34 @@ router.post('/setup', async (req, res) => {
   try {
     const { username, password, secretKey } = req.body;
     if (secretKey !== process.env.SETUP_SECRET) return res.status(403).json({ error: 'Ruxsat yoq' });
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const admin = await prisma.admin.create({ data: { username, password: hashedPassword } });
-    res.json({ message: 'Admin yaratildi', username: admin.username });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-module.exports = router;
+    
+    // Jadvallarni yaratish
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "Admin" (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS "Product" (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        price DOUBLE PRECISION NOT NULL,
+        image TEXT,
+        category TEXT NOT NULL,
+        available BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS "Order" (
+        id SERIAL PRIMARY KEY,
+        "customerName" TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        address TEXT,
+        total DOUBLE PRECISION NOT NULL,
+        status TEXT NOT NULL DEFAULT 'yangi',
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS "OrderItem" (
+        id SERIAL PRIMARY KEY,
+        "orderId" INTEGER NOT NULL REFERENCES "Order"(id),
+        "
