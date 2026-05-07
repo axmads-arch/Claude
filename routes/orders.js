@@ -3,6 +3,21 @@ const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
+const CHAT_ID = '-5192922233';
+
+async function sendTelegram(order) {
+  const items = order.items.map(i => `• ${i.quantity}x — ${Number(i.price).toLocaleString()} so'm`).join('\n');
+  const text = `🛒 *YANGI BUYURTMA #${order.id}*\n\n👤 *Ism:* ${order.customerName}\n📞 *Telefon:* ${order.phone}\n📍 *Manzil:* ${order.address}\n\n*Mahsulotlar:*\n${items}\n\n💰 *Jami: ${Number(order.total).toLocaleString()} so'm*`;
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'Markdown' })
+    });
+  } catch(e) { console.log('Telegram xatolik:', e.message); }
+}
+
 router.post('/', async (req, res) => {
   try {
     const { customerName, phone, address, items } = req.body;
@@ -14,6 +29,7 @@ router.post('/', async (req, res) => {
       },
       include: { items: true }
     });
+    await sendTelegram(order);
     res.json(order);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
