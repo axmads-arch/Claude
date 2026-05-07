@@ -4,7 +4,7 @@
   "main": "server.js",
   "scripts": {
     "build": "prisma generate",
-    "start": "prisma db push && node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
