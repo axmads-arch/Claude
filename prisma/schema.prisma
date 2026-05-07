@@ -45,3 +45,9 @@ model Admin {
   username String @unique
   password String
 }
+model Banner {
+  id       Int    @id @default(autoincrement())
+  title    String
+  subtitle String
+  emoji    String
+}
