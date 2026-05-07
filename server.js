@@ -1,28 +1,50 @@
 const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
+const router = express.Router();
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-dotenv.config();
+const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
+const CHAT_ID = '-5192922233';
 
-const app = express();
+async function sendTelegram(order) {
+  const items = order.items.map(i => `• ${i.quantity}x — ${Number(i.price).toLocaleString()} so'm`).join('\n');
+  const text = `🛒 *YANGI BUYURTMA #${order.id}*\n\n👤 *Ism:* ${order.customerName}\n📞 *Telefon:* ${order.phone}\n📍 *Manzil:* ${order.address}\n\n*Mahsulotlar:*\n${items}\n\n💰 *Jami: ${Number(order.total).toLocaleString()} so'm*`;
+  
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'Markdown' })
+  });
+}
 
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-app.use(express.json());
-
-app.use('/api/products', require('./routes/products'));
-app.use('/api/orders', require('./routes/orders'));
-app.use('/api/auth', require('./routes/auth'));
-
-app.get('/', (req, res) => {
-  res.json({ message: 'Server ishlayapti! ✅' });
+router.post('/', async (req, res) => {
+  try {
+    const { customerName, phone, address, items } = req.body;
+    const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const order = await prisma.order.create({
+      data: {
+        customerName, phone, address, total,
+        items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity, price: item.price })) }
+      },
+      include: { items: true }
+    });
+    await sendTelegram(order);
+    res.json(order);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server ${PORT} portda ishlayapti`);
+router.get('/', async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({ include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } });
+    res.json(orders);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+router.put('/:id/status', async (req, res) => {
+  try {
+    const order = await prisma.order.update({ where: { id: Number(req.params.id) }, data: { status: req.body.status } });
+    res.json(order);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+module.exports = router;
