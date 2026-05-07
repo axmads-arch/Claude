@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "build": "prisma generate",
-    "start": "prisma generate && node server.js"
+    "build": "prisma generate && prisma migrate deploy",
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
