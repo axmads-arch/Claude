@@ -31,6 +31,7 @@ main();
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/banner', require('./routes/banner'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'Server ishlayapti! ✅' });
