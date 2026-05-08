@@ -34,6 +34,17 @@ router.post('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.get('/my/:phone', async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { phone: req.params.phone },
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(orders);
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 router.get('/', async (req, res) => {
   try {
     const orders = await prisma.order.findMany({ include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } });
