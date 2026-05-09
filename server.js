@@ -2,11 +2,20 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 
 dotenv.config();
 
 const prisma = new PrismaClient();
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+  }
+});
 
 app.use(cors({
   origin: '*',
@@ -28,6 +37,15 @@ async function main() {
 
 main();
 
+io.on('connection', (socket) => {
+  console.log('Foydalanuvchi ulandi:', socket.id);
+  socket.on('disconnect', () => {
+    console.log('Foydalanuvchi uzildi:', socket.id);
+  });
+});
+
+app.set('io', io);
+
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/auth', require('./routes/auth'));
@@ -38,6 +56,6 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server ${PORT} portda ishlayapti`);
 });
