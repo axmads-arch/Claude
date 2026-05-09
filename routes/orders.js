@@ -30,6 +30,20 @@ router.post('/', async (req, res) => {
       include: { items: true }
     });
     await sendTelegram(order);
+    const io = req.app.get('io');
+    if (io) io.emit('newOrder', order);
+    res.json(order);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/:id/status', async (req, res) => {
+  try {
+    const order = await prisma.order.update({
+      where: { id: Number(req.params.id) },
+      data: { status: req.body.status }
+    });
+    const io = req.app.get('io');
+    if (io) io.emit('orderStatus', { id: order.id, status: order.status, phone: order.phone });
     res.json(order);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -47,15 +61,11 @@ router.get('/my/:phone', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const orders = await prisma.order.findMany({ include: { items: { include: { product: true } } }, orderBy: { createdAt: 'desc' } });
+    const orders = await prisma.order.findMany({
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
     res.json(orders);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-router.put('/:id/status', async (req, res) => {
-  try {
-    const order = await prisma.order.update({ where: { id: Number(req.params.id) }, data: { status: req.body.status } });
-    res.json(order);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
