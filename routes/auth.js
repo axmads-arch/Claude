@@ -1,37 +1,95 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
+const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || 'rahmatchef_secret_2026';
+
+// Admin login
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const admin = await prisma.admin.findUnique({ where: { username } });
-    if (!admin) return res.status(401).json({ error: 'Username yoki parol xato' });
-    const isValid = await bcrypt.compare(password, admin.password);
-    if (!isValid) return res.status(401).json({ error: 'Username yoki parol xato' });
-    const token = jwt.sign({ id: admin.id, username: admin.username }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    // Admin topish
+    let admin = await prisma.admin.findUnique({ where: { username } });
+
+    // Agar admin yo'q bo'lsa, default admin yaratish
+    if (!admin) {
+      if (username === 'admin' && password === 'admin123') {
+        const hashed = await bcrypt.hash('admin123', 10);
+        admin = await prisma.admin.create({
+          data: { username: 'admin', password: hashed }
+        });
+      } else {
+        return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+      }
+    }
+
+    // Parol tekshirish
+    const valid = await bcrypt.compare(password, admin.password);
+    if (!valid) {
+      return res.status(401).json({ error: 'Login yoki parol noto\'g\'ri' });
+    }
+
+    // Token yaratish
+    const token = jwt.sign(
+      { id: admin.id, username: admin.username },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
     res.json({ token, username: admin.username });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/setup', async (req, res) => {
+// Token tekshirish
+router.get('/me', async (req, res) => {
   try {
-    const { username, password, secretKey } = req.body;
-    if (secretKey !== process.env.SETUP_SECRET) {
-      return res.status(403).json({ error: 'Ruxsat yoq' });
+    const auth = req.headers.authorization;
+    if (!auth) return res.status(401).json({ error: 'Token yo\'q' });
+
+    const token = auth.replace('Bearer ', '');
+    const decoded = jwt.verify(token, JWT_SECRET);
+    res.json({ id: decoded.id, username: decoded.username });
+  } catch (err) {
+    res.status(401).json({ error: 'Token noto\'g\'ri' });
+  }
+});
+
+// Foydalanuvchi telefon orqali kirish (OTP simulatsiya)
+router.post('/otp/send', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Telefon raqam kerak' });
+
+    // Real OTP o'rniga hozircha 1234
+    console.log(`OTP ${phone} ga yuborildi: 1234`);
+    res.json({ success: true, message: 'OTP yuborildi' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/otp/verify', async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+
+    // Hozircha 1234 kod ishlaydi
+    if (code !== '1234') {
+      return res.status(400).json({ error: 'Kod noto\'g\'ri' });
     }
-    await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Admin" (id SERIAL PRIMARY KEY, username TEXT NOT NULL UNIQUE, password TEXT NOT NULL)`);
-    await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Product" (id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT, price DOUBLE PRECISION NOT NULL, image TEXT, category TEXT NOT NULL, available BOOLEAN NOT NULL DEFAULT true, "createdAt" TIMESTAMP NOT NULL DEFAULT NOW())`);
-    await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Order" (id SERIAL PRIMARY KEY, "customerName" TEXT NOT NULL, phone TEXT NOT NULL, address TEXT, total DOUBLE PRECISION NOT NULL, status TEXT NOT NULL DEFAULT 'yangi', "createdAt" TIMESTAMP NOT NULL DEFAULT NOW())`);
-    await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "OrderItem" (id SERIAL PRIMARY KEY, "orderId" INTEGER NOT NULL REFERENCES "Order"(id), "productId" INTEGER NOT NULL REFERENCES "Product"(id), quantity INTEGER NOT NULL, price DOUBLE PRECISION NOT NULL)`);
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const admin = await prisma.admin.create({ data: { username, password: hashedPassword } });
-    res.json({ message: 'Admin yaratildi!', username: admin.username });
+
+    const token = jwt.sign(
+      { phone },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    res.json({ token, phone });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
