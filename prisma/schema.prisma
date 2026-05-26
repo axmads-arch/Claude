@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Product {
@@ -16,38 +16,44 @@ model Product {
   category    String
   available   Boolean     @default(true)
   createdAt   DateTime    @default(now())
-  items       OrderItem[]
+  orderItems  OrderItem[]
 }
 
 model Order {
-  id           Int         @id @default(autoincrement())
-  customerName String
-  phone        String
-  address      String?
-  total        Float
-  status       String      @default("yangi")
-  createdAt    DateTime    @default(now())
-  items        OrderItem[]
+  id            Int         @id @default(autoincrement())
+  customerName  String
+  phone         String
+  address       String?
+  total         Float
+  status        String      @default("yangi")
+  deliveryType  String      @default("delivery")
+  paymentMethod String      @default("cash")
+  comment       String?
+  latitude      String?
+  longitude     String?
+  createdAt     DateTime    @default(now())
+  items         OrderItem[]
 }
 
 model OrderItem {
   id        Int     @id @default(autoincrement())
-  order     Order   @relation(fields: [orderId], references: [id])
   orderId   Int
-  product   Product @relation(fields: [productId], references: [id])
   productId Int
   quantity  Int
   price     Float
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model Banner {
+  id       Int    @id @default(autoincrement())
+  title    String
+  subtitle String
+  emoji    String
 }
 
 model Admin {
   id       Int    @id @default(autoincrement())
   username String @unique
   password String
-}
-model Banner {
-  id       Int    @id @default(autoincrement())
-  title    String
-  subtitle String
-  emoji    String
 }
