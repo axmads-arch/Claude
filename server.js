@@ -59,6 +59,7 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/banner', require('./routes/banner'));
+app.use('/api/bot', require('./routes/bot'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'Rahmat Chef Server ✅', version: '2.0' });
