@@ -15,7 +15,7 @@ const ADDRESS    = "Ko'kcha darvoza 340a";
 const LATITUDE   = 41.3224858;
 const LONGITUDE  = 69.2091613;
 const SITE_URL   = 'https://frontend-topaz-kappa-84.vercel.app';
-const ish vaqti  = 24/7 xizmatingizda
+const WORK_TIME  = "24/7 xizmatingizda"
 
 // Foydalanuvchi holatini xotirada saqlash (izoh kutish uchun)
 const waitingFeedback = new Set();
@@ -183,7 +183,7 @@ router.post('/webhook', async (req, res) => {
     if (text === 'ℹ️ Biz haqimizda') {
       await sendMessage(
         chatId,
-        `ℹ️ *Rahmat Chef haqida*\n\n🍰 Premium shirinliklar va ☕️ ichimliklar kafesi. San Sebastian, sara tortlar.\n\n🕒 *ish vaqti* ${workingtime}\n📞 *Telefon:* ${PHONE}\n🌐 *Veb-sayt:* ${WEBSITE}\n📌 *Instagram:* [@rahmatchef.uz](${INSTAGRAM})\n\nSizni kutamiz! 🙏`,
+        `ℹ️ *Rahmat Chef haqida*\n\n🍰 Premium shirinliklar va ☕️ ichimliklar kafesi. San Sebastian, sara tortlar.\n\n🕒 *ish vaqti* ${WORK_TIME}\n📞 *Telefon:* ${PHONE}\n🌐 *Veb-sayt:* ${WEBSITE}\n📌 *Instagram:* [@rahmatchef.uz](${INSTAGRAM})\n\nSizni kutamiz! 🙏`,
         { reply_markup: MAIN_MENU }
       );
       return;
