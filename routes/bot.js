@@ -182,7 +182,7 @@ router.post('/webhook', async (req, res) => {
     if (text === 'ℹ️ Biz haqimizda') {
       await sendMessage(
         chatId,
-        `ℹ️ *Rahmat Chef haqida*\n\n🍰 Premium shirinliklar va ☕️ ichimliklar kafesi. San Sebastian, sara tortlar, medoviklar va boshqa mazali taomlar.\n\n📞 *Telefon:* ${PHONE}\n🌐 *Veb-sayt:* ${WEBSITE}\n📷 *Instagram:* [@rahmatchef.uz](${INSTAGRAM})\n\nSizni kutamiz! 🙏`,
+        `ℹ️ *Rahmat Chef haqida*\n\n🍰 Premium shirinliklar va ☕️ ichimliklar kafesi. San Sebastian, sara tortlar, medoviklar va boshqa mazali taomlar.\n\n📞 *Telefon:* ${PHONE}\n🌐 *Veb-sayt:* ${WEBSITE}\n📌 *Instagram:* [@rahmatchef.uz](${INSTAGRAM})\n\nSizni kutamiz! 🙏`,
         { reply_markup: MAIN_MENU }
       );
       return;
