@@ -6,12 +6,26 @@ const prisma = new PrismaClient();
 router.get('/', async (req, res) => {
   try {
     const { category } = req.query;
-    const products = await prisma.product.findMany({
-      where: category ? { category } : {},
-      orderBy: { createdAt: 'desc' }
-    });
+    const where = { available: true };
+    if (category && category !== 'Barchasi') where.category = category;
+    const products = await prisma.product.findMany({ where, orderBy: { id: 'asc' } });
     res.json(products);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/all', async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({ orderBy: { id: 'asc' } });
+    res.json(products);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/categories', async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({ where: { available: true }, select: { category: true } });
+    const cats = [...new Set(products.map(p => p.category))];
+    res.json(cats);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/:id', async (req, res) => {
@@ -19,17 +33,18 @@ router.get('/:id', async (req, res) => {
     const product = await prisma.product.findUnique({ where: { id: Number(req.params.id) } });
     if (!product) return res.status(404).json({ error: 'Topilmadi' });
     res.json(product);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/', async (req, res) => {
   try {
-    const { name, description, price, image, category } = req.body;
+    const { name, description, price, image, category, available } = req.body;
+    if (!name || !price || !category) return res.status(400).json({ error: 'Nomi, narxi va kategoriya kerak' });
     const product = await prisma.product.create({
-      data: { name, description, price: Number(price), image, category }
+      data: { name, description, price: Number(price), image, category, available: available !== false }
     });
     res.json(product);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/:id', async (req, res) => {
@@ -40,14 +55,14 @@ router.put('/:id', async (req, res) => {
       data: { name, description, price: Number(price), image, category, available }
     });
     res.json(product);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.delete('/:id', async (req, res) => {
   try {
     await prisma.product.delete({ where: { id: Number(req.params.id) } });
-    res.json({ message: "O'chirildi" });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;
