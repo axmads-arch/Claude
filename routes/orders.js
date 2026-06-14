@@ -17,7 +17,7 @@ async function sendTelegram(text) {
 }
 
 const STATUS_LABELS = {
-  new: '🆕 Yangi', preparing: '👨 Tayyorlanmoqda', ready: '✅ Tayyor',
+  new: '🆕 Yangi', preparing: '👨‍🍳 Tayyorlanmoqda', ready: '✅ Tayyor',
   delivering: '🚗 Yetkazilmoqda', delivered: '🎉 Yetkazildi', cancelled: '❌ Bekor',
 };
 const PAYMENT_LABELS = { cash: '💵 Naqd', click: '📱 Click', payme: '💳 Payme', uzum: '🟣 Uzum', card: '💳 Karta' };
@@ -116,4 +116,21 @@ router.put('/:id/status', async (req, res) => {
     const order = await prisma.order.update({
       where: { id: Number(req.params.id) },
       data: { status },
-      include: { items: { include:
+      include: { items: { include: { product: true } } },
+    });
+    const io = req.app.get('io');
+    if (io) io.emit('order_updated', { orderId: order.id, status });
+    await sendTelegram(`📦 *Buyurtma #${order.id}* — ${STATUS_LABELS[status] || status}\n📞 ${order.customerPhone}`);
+    res.json(order);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    await prisma.orderItem.deleteMany({ where: { orderId: Number(req.params.id) } });
+    await prisma.order.delete({ where: { id: Number(req.params.id) } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+module.exports = router;
