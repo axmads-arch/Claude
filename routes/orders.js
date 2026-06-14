@@ -1,97 +1,119 @@
-import React, { useState, useEffect } from 'react';
-import { fetchMyOrders } from '../data/api';
+const express = require('express');
+const router = express.Router();
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-const STATUS = {
-  new: { label: 'Yangi', ru: 'Новый', cls: 'st-new' },
-  preparing: { label: 'Tayyorlanmoqda', ru: 'Готовится', cls: 'st-preparing' },
-  ready: { label: 'Tayyor', ru: 'Готов', cls: 'st-ready' },
-  delivering: { label: 'Yetkazilmoqda', ru: 'Доставляется', cls: 'st-delivering' },
-  delivered: { label: 'Yetkazildi', ru: 'Доставлен', cls: 'st-delivered' },
-  cancelled: { label: 'Bekor', ru: 'Отменён', cls: 'st-cancelled' },
-};
+const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
+const ADMIN_CHAT_ID = '-5192922233';
 
-const PAY = { cash: 'Naqd', click: 'Click', payme: 'Payme', uzum: 'Uzum', card: 'Karta' };
-const DEL = { delivery: 'Yetkazib berish', pickup: 'Olib ketish' };
-
-export default function Orders({ user, onAuthRequired, fmt }) {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    fetchMyOrders(user.phone).then(data => {
-      setOrders(Array.isArray(data) ? data : []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [user]);
-
-  if (!user) {
-    return (
-      <div className="page">
-        <div className="page-header">
-          <span className="page-title">Buyurtmalar</span>
-        </div>
-        <div className="empty-state" style={{ marginTop: 40 }}>
-          <div className="empty-state-icon">📋</div>
-          <h3>Buyurtmalar tarixi</h3>
-          <p>Ko'rish uchun tizimga kiring</p>
-          <button className="login-btn" style={{ marginTop: 20 }} onClick={onAuthRequired}>Kirish</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="page">
-      <div className="page-header">
-        <span className="page-title">Buyurtmalar</span>
-      </div>
-
-      {loading ? (
-        <div style={{ padding: 20 }}>
-          {[1,2,3].map(i => (
-            <div key={i} style={{ background: 'white', borderRadius: 16, padding: 14, marginBottom: 12 }}>
-              <div className="skeleton" style={{ height: 16, width: '60%', marginBottom: 10 }} />
-              <div className="skeleton" style={{ height: 12, width: '80%', marginBottom: 6 }} />
-              <div className="skeleton" style={{ height: 12, width: '40%' }} />
-            </div>
-          ))}
-        </div>
-      ) : orders.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: 40 }}>
-          <div className="empty-state-icon">🛍️</div>
-          <h3>Buyurtmalar yo'q</h3>
-          <p>Hali buyurtma bermagansiz</p>
-        </div>
-      ) : (
-        <div className="orders-list">
-          {orders.map(o => {
-            const st = STATUS[o.status] || { label: o.status, cls: 'st-new' };
-            const date = new Date(o.createdAt).toLocaleString('uz-UZ', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
-            const itemsText = o.items?.map(i => `${i.product?.name || 'Mahsulot'} x${i.quantity}`).join(', ') || '';
-            return (
-              <div key={o.id} className="order-card">
-                <div className="order-card-head">
-                  <div>
-                    <div className="order-num">Buyurtma #{o.id}</div>
-                    <div className="order-date">{date}</div>
-                  </div>
-                  <span className={`status-pill ${st.cls}`}>{st.label}</span>
-                </div>
-                <div className="order-items-text">{itemsText}</div>
-                <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>
-                  {DEL[o.deliveryType] || o.deliveryType} · {PAY[o.paymentMethod] || o.paymentMethod}
-                  {o.address ? ` · ${o.address}` : ''}
-                </div>
-                <div className="order-total-row">
-                  <span style={{ fontSize: 13, color: 'var(--text2)' }}>Jami summa</span>
-                  <span className="order-total-price">{fmt(o.totalPrice)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+async function sendTelegram(text) {
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: ADMIN_CHAT_ID, text, parse_mode: 'Markdown' }),
+    });
+  } catch (e) { console.log('Telegram xatolik:', e.message); }
 }
+
+const STATUS_LABELS = {
+  new: '🆕 Yangi', preparing: '👨 Tayyorlanmoqda', ready: '✅ Tayyor',
+  delivering: '🚗 Yetkazilmoqda', delivered: '🎉 Yetkazildi', cancelled: '❌ Bekor',
+};
+const PAYMENT_LABELS = { cash: '💵 Naqd', click: '📱 Click', payme: '💳 Payme', uzum: '🟣 Uzum', card: '💳 Karta' };
+const DELIVERY_LABELS = { delivery: '🚗 Yetkazib berish', pickup: '🏃 Olib ketish' };
+
+router.get('/', async (req, res) => {
+  try {
+    const { status, phone } = req.query;
+    const where = {};
+    if (status) where.status = status;
+    if (phone) where.customerPhone = { contains: phone };
+    const orders = await prisma.order.findMany({
+      where,
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(orders);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/my/:phone', async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { customerPhone: req.params.phone },
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(orders);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/', async (req, res) => {
+  try {
+    const { customerPhone, customerName, deliveryType, paymentMethod, address, comment, latitude, longitude, items } = req.body;
+    if (!customerPhone || !items?.length) return res.status(400).json({ error: 'Telefon va mahsulotlar kerak' });
+
+    await prisma.customer.upsert({
+      where: { phone: customerPhone },
+      update: { name: customerName, address },
+      create: { phone: customerPhone, name: customerName, address },
+    });
+
+    const productIds = items.map(i => i.productId);
+    const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+    const deliveryPrice = deliveryType === 'delivery' ? (settings?.deliveryPrice || 0) : 0;
+
+    let totalPrice = deliveryPrice;
+    const orderItems = items.map(item => {
+      const product = productMap[item.productId];
+      const price = product ? product.price : item.price;
+      totalPrice += price * item.quantity;
+      return { productId: item.productId, quantity: item.quantity, price };
+    });
+
+    const order = await prisma.order.create({
+      data: {
+        customerPhone, customerName,
+        deliveryType: deliveryType || 'delivery',
+        paymentMethod: paymentMethod || 'cash',
+        address, comment, latitude, longitude,
+        totalPrice, deliveryPrice,
+        items: { create: orderItems },
+      },
+      include: { items: { include: { product: true } } },
+    });
+
+    const itemsText = order.items.map(i =>
+      `  • ${i.product?.name || 'Mahsulot'} x${i.quantity} — ${(i.price * i.quantity).toLocaleString()} so'm`
+    ).join('\n');
+    const locationText = latitude && longitude ? `\n📍 [Xarita](https://maps.google.com/?q=${latitude},${longitude})` : '';
+
+    await sendTelegram(
+      `🛒 *Yangi buyurtma #${order.id}*\n\n` +
+      `👤 ${customerName || 'Noma\'lum'}\n📞 ${customerPhone}\n` +
+      `${DELIVERY_LABELS[deliveryType] || deliveryType}\n${PAYMENT_LABELS[paymentMethod] || paymentMethod}\n` +
+      (address ? `🏠 ${address}` : '') + locationText +
+      (comment ? `\n💬 ${comment}` : '') +
+      `\n\n📦 Mahsulotlar:\n${itemsText}\n\n💰 *Jami: ${totalPrice.toLocaleString()} so'm*`
+    );
+
+    const io = req.app.get('io');
+    if (io) io.emit('new_order', order);
+    res.json(order);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put('/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await prisma.order.update({
+      where: { id: Number(req.params.id) },
+      data: { status },
+      include: { items: { include:
