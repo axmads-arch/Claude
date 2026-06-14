@@ -12,30 +12,29 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ── DB INIT ──
 async function main() {
   try {
     await prisma.$connect();
     console.log('✅ Database ulandi');
 
-    // Jadvallarni yaratish (migrate deploy)
     const { execSync } = require('child_process');
     try {
-      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+      execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+      console.log('✅ DB jadvallar yaratildi');
     } catch (e) {
-      try {
-        execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
-      } catch (e2) {
-        console.log('DB push xatolik (normal bo\'lishi mumkin):', e2.message);
-      }
+      console.log('DB push xatolik:', e.message);
     }
 
-    // Default sozlamalar yaratish
-    await prisma.settings.upsert({
-      where: { id: 1 },
-      update: {},
-      create: { id: 1 },
-    });
+    try {
+      await prisma.settings.upsert({
+        where: { id: 1 },
+        update: {},
+        create: { id: 1 },
+      });
+      console.log('✅ Settings tayyor');
+    } catch (e) {
+      console.log('Settings xatolik:', e.message);
+    }
 
     console.log('✅ DB tayyor');
   } catch (e) {
@@ -46,14 +45,12 @@ async function main() {
 
 main();
 
-// ── SOCKET.IO ──
 io.on('connection', (socket) => {
   console.log('Ulandi:', socket.id);
   socket.on('disconnect', () => console.log('Uzildi:', socket.id));
 });
 app.set('io', io);
 
-// ── ROUTES ──
 app.use('/api/products',  require('./routes/products'));
 app.use('/api/orders',    require('./routes/orders'));
 app.use('/api/auth',      require('./routes/auth'));
