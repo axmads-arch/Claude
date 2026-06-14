@@ -4,160 +4,133 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
-const CHAT_ID = '-5192922233';
-
-const STATUS_LABELS = {
-  yangi: '🆕 Yangi',
-  tayyorlanmoqda: '👨‍ Tayyorlanmoqda',
-  tayyor: '✅ Tayyor',
-  yetkazilmoqda: '🚗 Yetkazilmoqda',
-  yetkazildi: '🎉 Yetkazildi',
-  bekor: '❌ Bekor qilindi',
-};
+const ADMIN_CHAT_ID = '-5192922233';
 
 async function sendTelegram(text) {
   try {
     await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text,
-        parse_mode: 'Markdown',
-      }),
+      body: JSON.stringify({ chat_id: ADMIN_CHAT_ID, text, parse_mode: 'Markdown' }),
     });
-  } catch (e) {
-    console.log('Telegram xatolik:', e.message);
-  }
+  } catch (e) { console.log('Telegram xatolik:', e.message); }
 }
 
-// Yangi zakaz
+const STATUS_LABELS = {
+  new: '🆕 Yangi', preparing: '👨‍🍳 Tayyorlanmoqda', ready: '✅ Tayyor',
+  delivering: '🚗 Yetkazilmoqda', delivered: '🎉 Yetkazildi', cancelled: '❌ Bekor qilindi',
+};
+const PAYMENT_LABELS = { cash: '💵 Naqd', click: '📱 Click', payme: '💳 Payme', uzum: '🟣 Uzum', card: '💳 Karta' };
+const DELIVERY_LABELS = { delivery: '🚗 Yetkazib berish', pickup: '🏃 Olib ketish' };
+
+router.get('/', async (req, res) => {
+  try {
+    const { status, phone } = req.query;
+    const where = {};
+    if (status) where.status = status;
+    if (phone) where.customerPhone = { contains: phone };
+    const orders = await prisma.order.findMany({
+      where,
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(orders);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/my/:phone', async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { customerPhone: req.params.phone },
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(orders);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.post('/', async (req, res) => {
   try {
-    const {
-      customerName, phone, address,
-      items, deliveryType, paymentMethod,
-      comment, latitude, longitude,
-    } = req.body;
+    const { customerPhone, customerName, deliveryType, paymentMethod, address, comment, latitude, longitude, items } = req.body;
+    if (!customerPhone || !items?.length) return res.status(400).json({ error: 'Telefon va mahsulotlar kerak' });
 
-    const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    await prisma.customer.upsert({
+      where: { phone: customerPhone },
+      update: { name: customerName, address },
+      create: { phone: customerPhone, name: customerName, address },
+    });
+
+    const productIds = items.map(i => i.productId);
+    const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+    const deliveryPrice = deliveryType === 'delivery' ? (settings?.deliveryPrice || 0) : 0;
+
+    let totalPrice = deliveryPrice;
+    const orderItems = items.map(item => {
+      const product = productMap[item.productId];
+      const price = product ? product.price : item.price;
+      totalPrice += price * item.quantity;
+      return { productId: item.productId, quantity: item.quantity, price };
+    });
 
     const order = await prisma.order.create({
       data: {
-        customerName,
-        phone,
-        address,
-        total,
-        status: 'yangi',
+        customerPhone, customerName,
         deliveryType: deliveryType || 'delivery',
         paymentMethod: paymentMethod || 'cash',
-        comment: comment || '',
-        latitude: latitude ? String(latitude) : null,
-        longitude: longitude ? String(longitude) : null,
-        items: {
-          create: items.map(item => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            price: item.price,
-          })),
-        },
+        address, comment, latitude, longitude,
+        totalPrice, deliveryPrice,
+        items: { create: orderItems },
       },
       include: { items: { include: { product: true } } },
     });
 
-    // Telegram xabar
-    const itemsList = order.items
-      .map(i => `• ${i.product?.name || 'Mahsulot'} x${i.quantity} — ${Number(i.price).toLocaleString()} so'm`)
-      .join('\n');
+    const itemsText = order.items.map(i =>
+      `  • ${i.product?.name || 'Mahsulot'} x${i.quantity} — ${(i.price * i.quantity).toLocaleString()} so'm`
+    ).join('\n');
+    const locationText = latitude && longitude ? `\n📍 [Xaritada](https://maps.google.com/?q=${latitude},${longitude})` : '';
 
-    const locationLink = latitude && longitude
-      ? `📍 [Lokatsiya](https://maps.google.com/?q=${latitude},${longitude})`
-      : '📍 Lokatsiya: kiritilmagan';
-
-    const deliveryLabel = deliveryType === 'pickup' ? '🏃 Olib ketish' : '🚗 Yetkazib berish';
-    const paymentLabel = {
-      cash: '💵 Naqd',
-      click: '📱 Click',
-      payme: '💳 Payme',
-      uzum: '🏦 Uzum Bank',
-      card: '💳 Karta',
-    }[paymentMethod] || '💵 Naqd';
-
-    const text = `🛒 *YANGI ZAKAZ #${order.id}*
-
-👤 *Mijoz:* ${customerName}
-📞 *Telefon:* ${phone}
-${deliveryLabel}
-${paymentLabel}
-📍 *Manzil:* ${address || 'kiritilmagan'}
-${locationLink}
-💬 *Izoh:* ${comment || 'yo\'q'}
-
-*Mahsulotlar:*
-${itemsList}
-
-💰 *JAMI: ${Number(total).toLocaleString()} so'm*
-🕐 *Vaqt:* ${new Date().toLocaleString('uz')}`;
-
-    await sendTelegram(text);
+    await sendTelegram(
+      `🛒 *Yangi buyurtma #${order.id}*\n\n` +
+      `👤 ${customerName || 'Noma\'lum'}\n📞 ${customerPhone}\n` +
+      `${DELIVERY_LABELS[deliveryType] || deliveryType}\n${PAYMENT_LABELS[paymentMethod] || paymentMethod}\n` +
+      (address ? `🏠 ${address}` : '') + locationText +
+      (comment ? `\n💬 ${comment}` : '') +
+      `\n\n📦 Mahsulotlar:\n${itemsText}\n\n💰 *Jami: ${totalPrice.toLocaleString()} so'm*`
+    );
 
     const io = req.app.get('io');
-    if (io) io.emit('newOrder', order);
-
+    if (io) io.emit('new_order', order);
     res.json(order);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
   }
 });
 
-// Status yangilash
 router.put('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
     const order = await prisma.order.update({
       where: { id: Number(req.params.id) },
       data: { status },
+      include: { items: { include: { product: true } } },
     });
-
-    // Telegram status xabari
-    const label = STATUS_LABELS[status] || status;
-    await sendTelegram(`📦 *Zakaz #${order.id}* holati o'zgardi:\n${label}`);
-
     const io = req.app.get('io');
-    if (io) io.emit('orderStatus', { id: order.id, status: order.status });
-
+    if (io) io.emit('order_updated', { orderId: order.id, status });
+    await sendTelegram(`📦 *Buyurtma #${order.id}* — ${STATUS_LABELS[status] || status}\n📞 ${order.customerPhone}`);
     res.json(order);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Foydalanuvchi zakazlari
-router.get('/my/:phone', async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const orders = await prisma.order.findMany({
-      where: { phone: req.params.phone },
-      include: { items: { include: { product: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Barcha zakazlar (admin)
-router.get('/', async (req, res) => {
-  try {
-    const orders = await prisma.order.findMany({
-      include: { items: { include: { product: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    await prisma.orderItem.deleteMany({ where: { orderId: Number(req.params.id) } });
+    await prisma.order.delete({ where: { id: Number(req.params.id) } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;
