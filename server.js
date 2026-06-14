@@ -1,46 +1,44 @@
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
-const { PrismaClient } = require('@prisma/client');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { PrismaClient } = require('@prisma/client');
 
-dotenv.config();
-
-const prisma = new PrismaClient();
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'] }
-});
+const io = new Server(httpServer, { cors: { origin: '*' } });
+const prisma = new PrismaClient();
 
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
-app.use(express.json());
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
 
+// ── DB INIT ──
 async function main() {
   try {
     await prisma.$connect();
-    console.log('Database ulandi ✅');
+    console.log('✅ Database ulandi');
 
-    // Auto migration
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "deliveryType" TEXT DEFAULT 'delivery';
-    `).catch(() => {});
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "paymentMethod" TEXT DEFAULT 'cash';
-    `).catch(() => {});
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "comment" TEXT DEFAULT '';
-    `).catch(() => {});
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "latitude" TEXT;
-    `).catch(() => {});
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "longitude" TEXT;
-    `).catch(() => {});
+    // Jadvallarni yaratish (migrate deploy)
+    const { execSync } = require('child_process');
+    try {
+      execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+    } catch (e) {
+      try {
+        execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+      } catch (e2) {
+        console.log('DB push xatolik (normal bo\'lishi mumkin):', e2.message);
+      }
+    }
 
-    console.log('Migration bajarildi ✅');
-  } catch(e) {
+    // Default sozlamalar yaratish
+    await prisma.settings.upsert({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1 },
+    });
+
+    console.log('✅ DB tayyor');
+  } catch (e) {
     console.error('Database xatolik:', e.message);
     process.exit(1);
   }
@@ -48,18 +46,22 @@ async function main() {
 
 main();
 
+// ── SOCKET.IO ──
 io.on('connection', (socket) => {
   console.log('Ulandi:', socket.id);
   socket.on('disconnect', () => console.log('Uzildi:', socket.id));
 });
-
 app.set('io', io);
 
-app.use('/api/products', require('./routes/products'));
-app.use('/api/orders', require('./routes/orders'));
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/banner', require('./routes/banner'));
-app.use('/api/bot', require('./routes/bot'));
+// ── ROUTES ──
+app.use('/api/products',  require('./routes/products'));
+app.use('/api/orders',    require('./routes/orders'));
+app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/banner',    require('./routes/banner'));
+app.use('/api/customers', require('./routes/customers'));
+app.use('/api/settings',  require('./routes/settings'));
+app.use('/api/reports',   require('./routes/reports'));
+app.use('/api/bot',       require('./routes/bot'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'Rahmat Chef Server ✅', version: '2.0' });
@@ -67,5 +69,5 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
-  console.log(`Server ${PORT} portda ishlayapti 🚀`);
+  console.log(`🚀 Server ${PORT} portda ishlayapti`);
 });
