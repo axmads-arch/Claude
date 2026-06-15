@@ -67,10 +67,6 @@ router.put('/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-    res.json(product);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 router.delete('/:id', async (req, res) => {
   try {
     await prisma.product.delete({ where: { id: Number(req.params.id) } });
