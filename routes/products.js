@@ -49,11 +49,24 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { name, description, price, image, category, available } = req.body;
+    const existing = await prisma.product.findUnique({ where: { id: Number(req.params.id) } });
+    if (!existing) return res.status(404).json({ error: 'Topilmadi' });
+    const data = {
+      name: req.body.name ?? existing.name,
+      description: req.body.description ?? existing.description,
+      price: req.body.price ? Number(req.body.price) : existing.price,
+      image: req.body.image ?? existing.image,
+      category: req.body.category ?? existing.category,
+      available: req.body.available ?? existing.available,
+    };
     const product = await prisma.product.update({
       where: { id: Number(req.params.id) },
-      data: { name, description, price: Number(price), image, category, available }
+      data
     });
+    res.json(product);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
     res.json(product);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
