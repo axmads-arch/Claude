@@ -81,3 +81,16 @@ model Banner {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 }
+
+model Promo {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  type        String    @default("percent")
+  value       Float
+  minOrder    Float     @default(0)
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  active      Boolean   @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
