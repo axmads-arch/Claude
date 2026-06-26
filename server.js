@@ -60,6 +60,7 @@ app.use('/api/settings',  require('./routes/settings'));
 app.use('/api/reports',   require('./routes/reports'));
 app.use('/api/bot',       require('./routes/bot'));
 app.use('/api/upload',    require('./routes/upload'));
+app.use('/api/promo',     require('./routes/promo'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'Rahmat Chef Server ✅', version: '2.0' });
