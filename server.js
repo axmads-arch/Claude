@@ -16,26 +16,15 @@ async function main() {
   try {
     await prisma.$connect();
     console.log('✅ Database ulandi');
-
     const { execSync } = require('child_process');
     try {
       execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
       console.log('✅ DB jadvallar yaratildi');
-    } catch (e) {
-      console.log('DB push xatolik:', e.message);
-    }
-
+    } catch (e) { console.log('DB push xatolik:', e.message); }
     try {
-      await prisma.settings.upsert({
-        where: { id: 1 },
-        update: {},
-        create: { id: 1 },
-      });
+      await prisma.settings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
       console.log('✅ Settings tayyor');
-    } catch (e) {
-      console.log('Settings xatolik:', e.message);
-    }
-
+    } catch (e) { console.log('Settings xatolik:', e.message); }
     console.log('✅ DB tayyor');
   } catch (e) {
     console.error('Database xatolik:', e.message);
@@ -62,12 +51,9 @@ app.use('/api/bot',       require('./routes/bot'));
 app.use('/api/upload',    require('./routes/upload'));
 app.use('/api/promo',     require('./routes/promo'));
 app.use('/api/rating',    require('./routes/rating'));
+app.use('/api/chat',      require('./routes/chat'));
 
-app.get('/', (req, res) => {
-  res.json({ message: 'Rahmat Chef Server ✅', version: '2.0' });
-});
+app.get('/', (req, res) => res.json({ message: 'Rahmat Chef Server ✅', version: '3.0' }));
 
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Server ${PORT} portda ishlayapti`);
-});
+httpServer.listen(PORT, () => console.log(`🚀 Server ${PORT} portda ishlayapti`));
