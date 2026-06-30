@@ -57,4 +57,104 @@ router.get('/top-products', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── EXPORT: BUYURTMALAR CSV ──
+router.get('/export/orders', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const where = { status: { not: 'cancelled' } };
+    if (from) where.createdAt = { ...where.createdAt, gte: new Date(from) };
+    if (to) { const toDate = new Date(to); toDate.setHours(23,59,59,999); where.createdAt = { ...where.createdAt, lte: toDate }; }
+
+    const orders = await prisma.order.findMany({
+      where,
+      include: { items: { include: { product: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const STATUS = { new:'Yangi', preparing:'Tayyorlanmoqda', ready:'Tayyor', delivering:'Yetkazilmoqda', delivered:'Yetkazildi', cancelled:'Bekor' };
+    const PAY = { cash:'Naqd', click:'Click', payme:'Payme', uzum:'Uzum', card:'Karta' };
+    const DEL = { delivery:'Yetkazib berish', pickup:'Olib ketish' };
+
+    const BOM = '\uFEFF';
+    const headers = ['#', 'Sana', 'Mijoz', 'Telefon', 'Mahsulotlar', 'Yetkazish', "To'lov", 'Status', 'Manzil', 'Narx (so\'m)'];
+
+    const rows = orders.map(o => {
+      const date = new Date(o.createdAt).toLocaleString('uz-UZ', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      const items = o.items.map(i => `${i.product?.name||'?'} x${i.quantity}`).join('; ');
+      return [
+        o.id, date,
+        o.customerName || '',
+        o.customerPhone,
+        items,
+        DEL[o.deliveryType] || o.deliveryType,
+        PAY[o.paymentMethod] || o.paymentMethod,
+        STATUS[o.status] || o.status,
+        o.address || '',
+        o.totalPrice,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csv = BOM + [headers.map(h => `"${h}"`).join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="buyurtmalar_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── EXPORT: MIJOZLAR CSV ──
+router.get('/export/customers', async (req, res) => {
+  try {
+    const customers = await prisma.customer.findMany({
+      include: { orders: { where: { status: { not: 'cancelled' } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const BOM = '\uFEFF';
+    const headers = ['#', 'Ism', 'Telefon', 'Manzil', "Buyurtmalar soni", "Jami xarid (so'm)", 'Ro\'yxatdan o\'tgan'];
+
+    const rows = customers.map((c, i) => {
+      const totalSpent = c.orders.reduce((s, o) => s + (o.totalPrice || 0), 0);
+      const date = new Date(c.createdAt).toLocaleDateString('uz-UZ');
+      return [
+        i + 1,
+        c.name || '',
+        c.phone,
+        c.address || '',
+        c.orders.length,
+        totalSpent,
+        date,
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csv = BOM + [headers.map(h => `"${h}"`).join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="mijozlar_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── EXPORT: MAHSULOTLAR CSV ──
+router.get('/export/products', async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({ orderBy: { category: 'asc' } });
+
+    const BOM = '\uFEFF';
+    const headers = ['#', 'Nomi', 'Kategoriya', "Narxi (so'm)", 'Mavjud', 'Stok'];
+
+    const rows = products.map((p, i) => [
+      i + 1,
+      p.name,
+      p.category,
+      p.price,
+      p.available ? 'Ha' : "Yo'q",
+      p.stock !== null && p.stock !== undefined ? p.stock : 'Cheksiz',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+
+    const csv = BOM + [headers.map(h => `"${h}"`).join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="mahsulotlar_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
