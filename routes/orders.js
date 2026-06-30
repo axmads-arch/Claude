@@ -51,7 +51,7 @@ router.get('/my/:phone', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { customerPhone, customerName, deliveryType, paymentMethod, address, comment, latitude, longitude, items } = req.body;
+    const { customerPhone, customerName, deliveryType, paymentMethod, address, comment, latitude, longitude, items, scheduledTime } = req.body;
     if (!customerPhone || !items?.length) return res.status(400).json({ error: 'Telefon va mahsulotlar kerak' });
 
     await prisma.customer.upsert({
@@ -64,7 +64,6 @@ router.post('/', async (req, res) => {
     const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
     const productMap = Object.fromEntries(products.map(p => [p.id, p]));
 
-    // Stok tekshirish
     for (const item of items) {
       const product = productMap[item.productId];
       if (product && product.stock !== null && product.stock < item.quantity) {
@@ -90,23 +89,19 @@ router.post('/', async (req, res) => {
         paymentMethod: paymentMethod || 'cash',
         address, comment, latitude, longitude,
         totalPrice, deliveryPrice,
+        scheduledTime: scheduledTime ? new Date(scheduledTime) : null,
         items: { create: orderItems },
       },
       include: { items: { include: { product: true } } },
     });
 
-    // Stokni kamaytirish
     for (const item of items) {
       const product = productMap[item.productId];
       if (product && product.stock !== null) {
         const newStock = Math.max(0, product.stock - item.quantity);
         await prisma.product.update({
           where: { id: item.productId },
-          data: {
-            stock: newStock,
-            // Stok 0 ga tushsa avtomatik yopamiz
-            available: newStock > 0,
-          }
+          data: { stock: newStock, available: newStock > 0 }
         });
       }
     }
@@ -118,12 +113,13 @@ router.post('/', async (req, res) => {
     }).join('\n');
 
     const locationText = latitude && longitude ? `\n📍 [Xarita](https://maps.google.com/?q=${latitude},${longitude})` : '';
+    const scheduleText = scheduledTime ? `\n📅 *Buyurtma vaqti: ${new Date(scheduledTime).toLocaleString('uz-UZ', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}*` : '';
 
     await sendTelegram(
       `🛒 *Yangi buyurtma #${order.id}*\n\n` +
       `👤 ${customerName || 'Noma\'lum'}\n📞 ${customerPhone}\n` +
       `${DELIVERY_LABELS[deliveryType] || deliveryType}\n${PAYMENT_LABELS[paymentMethod] || paymentMethod}\n` +
-      (address ? `🏠 ${address}` : '') + locationText +
+      (address ? `🏠 ${address}` : '') + locationText + scheduleText +
       (comment ? `\n💬 ${comment}` : '') +
       `\n\n📦 Mahsulotlar:\n${itemsText}\n\n💰 *Jami: ${totalPrice.toLocaleString()} so'm*`
     );
@@ -146,17 +142,13 @@ router.put('/:id/status', async (req, res) => {
       include: { items: { include: { product: true } } },
     });
 
-    // Buyurtma bekor qilinsa stokni qaytarish
     if (status === 'cancelled') {
       for (const item of order.items) {
         const product = await prisma.product.findUnique({ where: { id: item.productId } });
         if (product && product.stock !== null) {
           await prisma.product.update({
             where: { id: item.productId },
-            data: {
-              stock: product.stock + item.quantity,
-              available: true,
-            }
+            data: { stock: product.stock + item.quantity, available: true }
           });
         }
       }
