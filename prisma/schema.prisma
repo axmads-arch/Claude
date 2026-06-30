@@ -1,97 +1,110 @@
 generator client {
-  provider = "prisma-client-js"
+ provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+ provider = "postgresql"
+ url      = env("DATABASE_URL")
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String?
-  price       Float
-  image       String?
-  category    String
-  available   Boolean  @default(true)
-  stock       Int?
-  createdAt   DateTime @default(now())
-  orderItems  OrderItem[]
+ id          Int      @id @default(autoincrement())
+ name        String
+ description String?
+ price       Float
+ image       String?
+ category    String
+ available   Boolean  @default(true)
+ stock       Int?
+ createdAt   DateTime @default(now())
+ orderItems  OrderItem[]
+ ratings     Rating[]
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
-  phone     String   @unique
-  name      String?
-  address   String?
-  createdAt DateTime @default(now())
-  orders    Order[]
+ id        Int      @id @default(autoincrement())
+ phone     String   @unique
+ name      String?
+ address   String?
+ createdAt DateTime @default(now())
+ orders    Order[]
 }
 
 model Order {
-  id             Int         @id @default(autoincrement())
-  customerPhone  String
-  customerName   String?
-  deliveryType   String      @default("delivery")
-  paymentMethod  String      @default("cash")
-  address        String?
-  comment        String?
-  latitude       Float?
-  longitude      Float?
-  status         String      @default("new")
-  totalPrice     Float
-  deliveryPrice  Float       @default(0)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  items          OrderItem[]
-  customer       Customer?   @relation(fields: [customerPhone], references: [phone])
+ id             Int         @id @default(autoincrement())
+ customerPhone  String
+ customerName   String?
+ deliveryType   String      @default("delivery")
+ paymentMethod  String      @default("cash")
+ address        String?
+ comment        String?
+ latitude       Float?
+ longitude      Float?
+ status         String      @default("new")
+ totalPrice     Float
+ deliveryPrice  Float       @default(0)
+ createdAt      DateTime    @default(now())
+ updatedAt      DateTime    @updatedAt
+ items          OrderItem[]
+ customer       Customer?   @relation(fields: [customerPhone], references: [phone])
 }
 
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  orderId   Int
-  productId Int
-  quantity  Int
-  price     Float
-  order     Order   @relation(fields: [orderId], references: [id])
-  product   Product @relation(fields: [productId], references: [id])
+ id        Int     @id @default(autoincrement())
+ orderId   Int
+ productId Int
+ quantity  Int
+ price     Float
+ order     Order   @relation(fields: [orderId], references: [id])
+ product   Product @relation(fields: [productId], references: [id])
 }
 
 model Settings {
-  id            Int     @id @default(1)
-  deliveryPrice Float   @default(10000)
-  minOrderPrice Float   @default(30000)
-  workStart     String  @default("09:00")
-  workEnd       String  @default("22:00")
-  siteName      String  @default("Rahmat Chef")
-  phone         String  @default("+998 93 272 2222")
-  address       String  @default("Ko'kcha darvoza 340a")
-  instagram     String  @default("https://www.instagram.com/rahmatchef.uz")
-  website       String  @default("rahmatchef.uz")
-  bannerText    String  @default("Yangi mahsulotlar keldi!")
-  bannerImage   String  @default("")
-  isOpen        Boolean @default(true)
+ id            Int     @id @default(1)
+ deliveryPrice Float   @default(10000)
+ minOrderPrice Float   @default(30000)
+ workStart     String  @default("09:00")
+ workEnd       String  @default("22:00")
+ siteName      String  @default("Rahmat Chef")
+ phone         String  @default("+998 93 272 2222")
+ address       String  @default("Ko'kcha darvoza 340a")
+ instagram     String  @default("https://www.instagram.com/rahmatchef.uz")
+ website       String  @default("rahmatchef.uz")
+ bannerText    String  @default("Yangi mahsulotlar keldi!")
+ bannerImage   String  @default("")
+ isOpen        Boolean @default(true)
 }
 
 model Banner {
-  id        Int      @id @default(autoincrement())
-  image     String
-  title     String?
-  link      String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+ id        Int      @id @default(autoincrement())
+ image     String
+ title     String?
+ link      String?
+ active    Boolean  @default(true)
+ createdAt DateTime @default(now())
 }
 
 model Promo {
-  id          Int       @id @default(autoincrement())
-  code        String    @unique
-  type        String    @default("percent")
-  value       Float
-  minOrder    Float     @default(0)
-  maxUses     Int?
-  usedCount   Int       @default(0)
-  active      Boolean   @default(true)
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
+ id          Int       @id @default(autoincrement())
+ code        String    @unique
+ type        String    @default("percent")
+ value       Float
+ minOrder    Float     @default(0)
+ maxUses     Int?
+ usedCount   Int       @default(0)
+ active      Boolean   @default(true)
+ expiresAt   DateTime?
+ createdAt   DateTime  @default(now())
+}
+
+model Rating {
+ id            Int      @id @default(autoincrement())
+ productId     Int
+ customerPhone String
+ stars         Int
+ comment       String?
+ createdAt     DateTime @default(now())
+ product       Product  @relation(fields: [productId], references: [id])
+
+ @@unique([productId, customerPhone])
 }
