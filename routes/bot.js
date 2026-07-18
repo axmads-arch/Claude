@@ -37,7 +37,7 @@ async function sendLocation(chatId, lat, lon) {
 }
 
 // Mijozga buyurtma holati xabari
-async function notifyCustomer(customerPhone, orderId, status, total) {
+async function notifyCustomer(customerPhone, orderId, status, total, paymentMethod) {
   const chatId = phoneToChat.get(customerPhone);
   if (!chatId) return;
   const STATUS = {
@@ -45,13 +45,20 @@ async function notifyCustomer(customerPhone, orderId, status, total) {
     preparing: '👨‍🍳 Buyurtmangiz tayyorlanmoqda',
     ready: '✅ Buyurtmangiz tayyor!',
     delivering: '🚗 Buyurtmangiz yetkazilmoqda',
-    delivered: `🎉 Buyurtmangiz yetkazildi!\n\nRahmat, yana keling! 🍰`,
+    delivered: '🎉 Buyurtmangiz yetkazildi!\n\nRahmat, yana keling! 🍰',
     cancelled: '❌ Buyurtmangiz bekor qilindi',
+  };
+  const PAY = {
+    cash: 'Naqd',
+    click: 'Click',
+    payme: 'Payme',
+    card: 'Karta',
   };
   const msg = STATUS[status];
   if (!msg) return;
+  const payLabel = PAY[paymentMethod] || paymentMethod || 'Naqd';
   await sendMessage(chatId,
-    `${msg}\n\n📦 Buyurtma #${orderId}${total ? `\n💰 Summa: ${total.toLocaleString()} so'm` : ''}\n\n🔗 ${SITE_URL}`
+    `${msg}\n\n📦 Buyurtma #${orderId}\n💳 ${payLabel}: ${total ? total.toLocaleString() + " so'm ✅" : ''}`
   );
 }
 
