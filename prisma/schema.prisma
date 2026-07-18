@@ -22,12 +22,13 @@ model Product {
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
-  phone     String   @unique
-  name      String?
-  address   String?
-  createdAt DateTime @default(now())
-  orders    Order[]
+  id             Int      @id @default(autoincrement())
+  phone          String   @unique
+  name           String?
+  address        String?
+  telegramChatId String?
+  createdAt      DateTime @default(now())
+  orders         Order[]
 }
 
 model Order {
