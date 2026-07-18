@@ -159,7 +159,7 @@ router.put('/:id/status', async (req, res) => {
     if (io) io.emit('order_updated', { orderId: order.id, status });
     await sendTelegram(`📦 *Buyurtma #${order.id}* — ${STATUS_LABELS[status] || status}\n📞 ${order.customerPhone}`);
     // Mijozga Telegram xabar yuborish
-    try { await bot.notifyCustomer(order.customerPhone, order.id, status, order.totalPrice); } catch(e) {}
+    try { await bot.notifyCustomer(order.customerPhone, order.id, status, order.totalPrice, order.paymentMethod); } catch(e) {}
     res.json(order);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
