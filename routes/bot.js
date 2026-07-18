@@ -3,69 +3,58 @@ const router = express.Router();
 
 const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
-
-// Admin guruh (izoh/shikoyatlar shu yerga boradi)
 const ADMIN_CHAT_ID = '-5192922233';
+const SITE_URL = 'https://frontend-topaz-kappa-84.vercel.app';
+const PHONE = '+998 93 272 2222';
+const ADDRESS = "Ko'kcha darvoza 340a";
+const LATITUDE = 41.3224858;
+const LONGITUDE = 69.2091613;
+const INSTAGRAM = 'https://www.instagram.com/rahmatchef.uz';
 
-// ── KAFE MA'LUMOTLARI ──
-const PHONE      = '+998 93 272 2222';
-const WEBSITE    = 'rahmatchef.uz';
-const INSTAGRAM  = 'https://www.instagram.com/rahmatchef.uz';
-const ADDRESS    = "Ko'kcha darvoza 340a";
-const LATITUDE   = 41.3224858;
-const LONGITUDE  = 69.2091613;
-const SITE_URL   = 'https://frontend-topaz-kappa-84.vercel.app';
-const WORK_TIME  = "24/7 xizmatingizda";
-
-// Foydalanuvchi holatini xotirada saqlash (izoh kutish uchun)
+// Telefon → Telegram chat_id xaritasi
+const phoneToChat = new Map();
 const waitingFeedback = new Set();
+const waitingPhone = new Set(); // OTP uchun telefon kutish
 
-// ── TELEGRAM API HELPERS ──
 async function sendMessage(chatId, text, extra = {}) {
   try {
     await fetch(`${TELEGRAM_API}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'Markdown',
-        ...extra,
-      }),
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', ...extra }),
     });
-  } catch (e) {
-    console.log('Telegram sendMessage xatolik:', e.message);
-  }
+  } catch (e) { console.log('sendMessage xatolik:', e.message); }
 }
 
-async function sendLocation(chatId, latitude, longitude) {
+async function sendLocation(chatId, lat, lon) {
   try {
     await fetch(`${TELEGRAM_API}/sendLocation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, latitude, longitude }),
-    });
-  } catch (e) {
-    console.log('Telegram sendLocation xatolik:', e.message);
-  }
-}
-
-async function setMyCommands() {
-  try {
-    await fetch(`${TELEGRAM_API}/setMyCommands`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        commands: [
-          { command: 'start', description: 'Botni ishga tushirish' },
-          { command: 'menu',  description: 'Bosh menyu' },
-        ],
-      }),
+      body: JSON.stringify({ chat_id: chatId, latitude: lat, longitude: lon }),
     });
   } catch (e) {}
 }
 
-// ── ASOSIY MENYU (reply keyboard) ──
+// Mijozga buyurtma holati xabari
+async function notifyCustomer(customerPhone, orderId, status, total) {
+  const chatId = phoneToChat.get(customerPhone);
+  if (!chatId) return;
+  const STATUS = {
+    new: '🆕 Buyurtmangiz qabul qilindi',
+    preparing: '👨‍🍳 Buyurtmangiz tayyorlanmoqda',
+    ready: '✅ Buyurtmangiz tayyor!',
+    delivering: '🚗 Buyurtmangiz yetkazilmoqda',
+    delivered: `🎉 Buyurtmangiz yetkazildi!\n\nRahmat, yana keling! 🍰`,
+    cancelled: '❌ Buyurtmangiz bekor qilindi',
+  };
+  const msg = STATUS[status];
+  if (!msg) return;
+  await sendMessage(chatId,
+    `${msg}\n\n📦 Buyurtma #${orderId}${total ? `\n💰 Summa: ${total.toLocaleString()} so'm` : ''}\n\n🔗 ${SITE_URL}`
+  );
+}
+
 const MAIN_MENU = {
   keyboard: [
     [{ text: '🛒 Buyurtma berish' }],
@@ -88,10 +77,8 @@ const BACK_MENU = {
   resize_keyboard: true,
 };
 
-// ── WEBHOOK HANDLER ──
 router.post('/webhook', async (req, res) => {
-  res.sendStatus(200); // Telegramga darhol javob
-
+  res.sendStatus(200);
   try {
     const update = req.body;
 
@@ -99,16 +86,19 @@ router.post('/webhook', async (req, res) => {
     if (update.message?.contact) {
       const chatId = update.message.chat.id;
       const contact = update.message.contact;
-      await sendMessage(
-        chatId,
-        `✅ Rahmat! Raqamingiz qabul qilindi:\n📞 ${contact.phone_number}\n\nTez orada operatorlarimiz siz bilan bog'lanishi mumkin.`,
+      const from = update.message.from;
+      // Telefon → chat_id ni saqlash
+      let phone = contact.phone_number;
+      if (!phone.startsWith('+')) phone = '+' + phone;
+      phoneToChat.set(phone, chatId);
+      waitingPhone.delete(from.id);
+
+      await sendMessage(chatId,
+        `✅ Rahmat! Raqamingiz bog'landi:\n📞 ${phone}\n\nEndi buyurtma berib, holati haqida xabar olasiz! 🎉`,
         { reply_markup: MAIN_MENU }
       );
-
-      // Adminga xabar
-      await sendMessage(
-        ADMIN_CHAT_ID,
-        `📞 *Yangi raqam yuborildi*\n\n👤 ${update.message.from.first_name || ''} ${update.message.from.last_name || ''}\n📱 ${contact.phone_number}\n🆔 @${update.message.from.username || 'username yo\'q'}`
+      await sendMessage(ADMIN_CHAT_ID,
+        `📞 *Yangi raqam yuborildi*\n\n👤 ${from.first_name || ''} ${from.last_name || ''}\n📱 ${phone}\n🆔 @${from.username || "yo'q"}`
       );
       return;
     }
@@ -117,142 +107,126 @@ router.post('/webhook', async (req, res) => {
     if (!message?.text) return;
 
     const chatId = message.chat.id;
-    const text   = message.text.trim();
+    const text = message.text.trim();
     const userId = message.from.id;
 
-    // ── /start ──
+    // /start
     if (text === '/start' || text === '/menu') {
       waitingFeedback.delete(userId);
-      await sendMessage(
-        chatId,
-        `👋 *Rahmat Chef*ga xush kelibsiz!\n\n🍰 Premium shirinliklar va ☕️ ichimliklar\n\nKerakli bo'limni tanlang:`,
+      // Telefon raqam so'rash
+      if (!waitingPhone.has(userId)) {
+        waitingPhone.add(userId);
+        await sendMessage(chatId,
+          `👋 *Rahmat Chef*ga xush kelibsiz!\n\n🍰 Premium shirinliklar va ☕️ ichimliklar\n\n📱 Buyurtma holatini bilish uchun telefon raqamingizni ulashing:`,
+          { reply_markup: CONTACT_BUTTON }
+        );
+        return;
+      }
+      await sendMessage(chatId,
+        `👋 *Rahmat Chef*ga xush kelibsiz!\n\nKerakli bo'limni tanlang:`,
         { reply_markup: MAIN_MENU }
       );
       return;
     }
 
-    // ── ORQAGA ──
+    // Orqaga
     if (text === '⬅️ Orqaga') {
       waitingFeedback.delete(userId);
       await sendMessage(chatId, '🏠 Bosh menyu', { reply_markup: MAIN_MENU });
       return;
     }
 
-    // ── AGAR IZOH KUTILAYOTGAN BO'LSA ──
+    // Izoh kutilayotgan
     if (waitingFeedback.has(userId)) {
       waitingFeedback.delete(userId);
-
-      // Foydalanuvchiga rahmat
-      await sendMessage(
-        chatId,
-        `✅ Rahmat! Izohingiz qabul qilindi.\n\nFikr-mulohazalaringiz biz uchun juda muhim. Tez orada ko'rib chiqamiz! 🙏`,
+      await sendMessage(chatId,
+        `✅ Rahmat! Izohingiz qabul qilindi. 🙏`,
         { reply_markup: MAIN_MENU }
       );
-
-      // Adminga yuborish
       const from = message.from;
-      await sendMessage(
-        ADMIN_CHAT_ID,
-        `💬 *Yangi izoh / fikr*\n\n👤 ${from.first_name || ''} ${from.last_name || ''}\n🆔 @${from.username || "username yo'q"}\n🆔 ID: ${userId}\n\n📝 *Matn:*\n${text}`
+      await sendMessage(ADMIN_CHAT_ID,
+        `💬 *Yangi izoh*\n\n👤 ${from.first_name || ''} ${from.last_name || ''}\n🆔 @${from.username || "yo'q"}\n\n📝 *Matn:*\n${text}`
       );
       return;
     }
 
-    // ── 🛒 BUYURTMA BERISH ──
     if (text === '🛒 Buyurtma berish') {
-      await sendMessage(
-        chatId,
-        `🛒 *Buyurtma berish*\n\nQuyidagi havola orqali saytimizga o'ting, kerakli mahsulotlarni savatchaga qo'shing va buyurtma bering:\n\n🔗 ${SITE_URL}\n\nBuyurtmangiz qabul qilingach, bu yerga avtomatik xabar keladi! ✅`,
+      await sendMessage(chatId,
+        `🛒 *Buyurtma berish*\n\nSaytimizga o'ting:\n\n🔗 ${SITE_URL}\n\nBuyurtmangiz qabul qilingach xabar keladi! ✅`,
         { reply_markup: MAIN_MENU }
       );
       return;
     }
 
-    // ── 📍 BIZNING MANZIL ──
     if (text === '📍 Bizning manzil') {
-      await sendMessage(
-        chatId,
-        `📍 *Bizning manzilimiz:*\n\n${ADDRESS}\n\n🚗 Mo'ljal: Ko'kcha masjidi yonida`,
+      await sendMessage(chatId,
+        `📍 *Bizning manzilimiz:*\n\n${ADDRESS}\n\n🚗 Ko'kcha masjidi yonida\n🕒 24/7 ochiq`,
         { reply_markup: MAIN_MENU }
       );
       await sendLocation(chatId, LATITUDE, LONGITUDE);
       return;
     }
 
-    // ── ℹ️ BIZ HAQIMIZDA ──
     if (text === 'ℹ️ Biz haqimizda') {
-      await sendMessage(
-        chatId,
-        `ℹ️ *Rahmat Chef haqida*\n\n🍰 Premium shirinliklar va ☕️ ichimliklar kafesi. San Sebastian, sara tortlar.\n\n🕒 *ish vaqti:* ${WORK_TIME}\n📞 *Telefon:* ${PHONE}\n🌐 *Veb-sayt:* ${WEBSITE}\n📌 *Instagram:* [@rahmatchef.uz](${INSTAGRAM})\n\nSizni kutamiz! 🙏`,
+      await sendMessage(chatId,
+        `ℹ️ *Rahmat Chef*\n\n🍰 Premium shirinliklar va ☕️ ichimliklar\n\n🕒 24/7 xizmatingizda\n📞 ${PHONE}\n📌 [Instagram](${INSTAGRAM})\n🌐 ${SITE_URL}`,
         { reply_markup: MAIN_MENU }
       );
       return;
     }
 
-    // ── 💬 IZOH QOLDIRISH ──
     if (text === '💬 Izoh qoldirish') {
       waitingFeedback.add(userId);
-      await sendMessage(
-        chatId,
-        `💬 *Izoh qoldirish*\n\nFikr, taklif yoki shikoyatingizni yozing. Xabaringiz to'g'ridan-to'g'ri administratorga yuboriladi.\n\n✍️ Endi xabaringizni yozing:`,
+      await sendMessage(chatId,
+        `💬 Fikr, taklif yoki shikoyatingizni yozing:`,
         { reply_markup: BACK_MENU }
       );
       return;
     }
 
-    // ── 📞 RAQAMNI YUBORISH ──
     if (text === '📞 Raqamni yuborish') {
-      await sendMessage(
-        chatId,
-        `📞 *Raqamingizni yuborish*\n\nQuyidagi tugma orqali telefon raqamingizni ulashing — operatorlarimiz siz bilan bog'lanadi.`,
+      await sendMessage(chatId,
+        `📞 Raqamingizni ulashing:`,
         { reply_markup: CONTACT_BUTTON }
       );
       return;
     }
 
-    // ── BOSHQA XABARLAR ──
-    await sendMessage(
-      chatId,
-      `Quyidagi tugmalardan birini tanlang 👇`,
-      { reply_markup: MAIN_MENU }
-    );
+    await sendMessage(chatId, `Quyidagi tugmalardan birini tanlang 👇`, { reply_markup: MAIN_MENU });
 
-  } catch (e) {
-    console.log('Bot webhook xatolik:', e.message);
-  }
+  } catch (e) { console.log('Bot xatolik:', e.message); }
 });
 
-// ── WEBHOOK O'RNATISH (bir martalik) ──
+// Webhook o'rnatish
 router.get('/set-webhook', async (req, res) => {
   try {
-    const railwayUrl = process.env.RAILWAY_STATIC_URL || req.get('host');
-    const protocol = railwayUrl.includes('localhost') ? 'http' : 'https';
-    const webhookUrl = `${protocol}://${railwayUrl}/api/bot/webhook`;
-
+    const webhookUrl = 'https://claude-production-0b03.up.railway.app/api/bot/webhook';
     const r = await fetch(`${TELEGRAM_API}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl }),
+      body: JSON.stringify({ url: webhookUrl, drop_pending_updates: true }),
     });
-    const data = await r.json();
-
-    await setMyCommands();
-
-    res.json({ webhookUrl, result: data });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    await fetch(`${TELEGRAM_API}/setMyCommands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        commands: [
+          { command: 'start', description: 'Botni ishga tushirish' },
+          { command: 'menu', description: 'Bosh menyu' },
+        ],
+      }),
+    });
+    res.json({ webhookUrl, result: await r.json() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── WEBHOOK HOLATINI TEKSHIRISH ──
 router.get('/webhook-info', async (req, res) => {
   try {
-    const r = await fetch(`${TELEGRAM_API}/getWebhookInfo`);
-    const data = await r.json();
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    res.json(await (await fetch(`${TELEGRAM_API}/getWebhookInfo`)).json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Orders.js dan chaqirish uchun export
 module.exports = router;
+module.exports.notifyCustomer = notifyCustomer;
+module.exports.phoneToChat = phoneToChat;
