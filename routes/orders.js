@@ -1,3 +1,4 @@
+const bot = require("./bot");
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
@@ -157,6 +158,8 @@ router.put('/:id/status', async (req, res) => {
     const io = req.app.get('io');
     if (io) io.emit('order_updated', { orderId: order.id, status });
     await sendTelegram(`📦 *Buyurtma #${order.id}* — ${STATUS_LABELS[status] || status}\n📞 ${order.customerPhone}`);
+    // Mijozga Telegram xabar yuborish
+    try { await bot.notifyCustomer(order.customerPhone, order.id, status, order.totalPrice); } catch(e) {}
     res.json(order);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
