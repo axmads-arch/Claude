@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 const ADMIN_CHAT_ID = '-5192922233';
+const OWNER_CHAT_ID = '1682348207';
 const SITE_URL = 'https://frontend-topaz-kappa-84.vercel.app';
 const PHONE = '+998 93 272 2222';
 const ADDRESS = "Ko'kcha darvoza 340a";
