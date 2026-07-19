@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const TELEGRAM_TOKEN = '8743223478:AAHuWX3CfWwfE8Vz7C8eHppkU2bcphZ2NEE';
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
@@ -11,10 +13,7 @@ const LATITUDE = 41.3224858;
 const LONGITUDE = 69.2091613;
 const INSTAGRAM = 'https://www.instagram.com/rahmatchef.uz';
 
-// Telefon → Telegram chat_id xaritasi
-const phoneToChat = new Map();
 const waitingFeedback = new Set();
-const waitingPhone = new Set(); // OTP uchun telefon kutish
 
 async function sendMessage(chatId, text, extra = {}) {
   try {
@@ -36,30 +35,28 @@ async function sendLocation(chatId, lat, lon) {
   } catch (e) {}
 }
 
-// Mijozga buyurtma holati xabari
+// Mijozga buyurtma holati xabari — DB dan chatId oladi
 async function notifyCustomer(customerPhone, orderId, status, total, paymentMethod) {
-  const chatId = phoneToChat.get(customerPhone);
-  if (!chatId) return;
-  const STATUS = {
-    new: '🆕 Buyurtmangiz qabul qilindi',
-    preparing: '👨‍🍳 Buyurtmangiz tayyorlanmoqda',
-    ready: '✅ Buyurtmangiz tayyor!',
-    delivering: '🚗 Buyurtmangiz yetkazilmoqda',
-    delivered: '🎉 Buyurtmangiz yetkazildi!\n\nRahmat, yana keling! 🍰',
-    cancelled: '❌ Buyurtmangiz bekor qilindi',
-  };
-  const PAY = {
-    cash: 'Naqd',
-    click: 'Click',
-    payme: 'Payme',
-    card: 'Karta',
-  };
-  const msg = STATUS[status];
-  if (!msg) return;
-  const payLabel = PAY[paymentMethod] || paymentMethod || 'Naqd';
-  await sendMessage(chatId,
-    `${msg}\n\n📦 Buyurtma #${orderId}\n💳 ${payLabel}: ${total ? total.toLocaleString() + " so'm ✅" : ''}`
-  );
+  try {
+    const customer = await prisma.customer.findUnique({ where: { phone: customerPhone } });
+    if (!customer?.telegramChatId) return;
+
+    const STATUS = {
+      new: '🆕 Buyurtmangiz qabul qilindi',
+      preparing: '👨‍🍳 Buyurtmangiz tayyorlanmoqda',
+      ready: '✅ Buyurtmangiz tayyor!',
+      delivering: '🚗 Buyurtmangiz yetkazilmoqda',
+      delivered: '🎉 Buyurtmangiz yetkazildi!\n\nRahmat, yana keling! 🍰',
+      cancelled: '❌ Buyurtmangiz bekor qilindi',
+    };
+    const PAY = { cash: 'Naqd', click: 'Click', payme: 'Payme', card: 'Karta' };
+    const msg = STATUS[status];
+    if (!msg) return;
+    const payLabel = PAY[paymentMethod] || 'Naqd';
+    await sendMessage(customer.telegramChatId,
+      `${msg}\n\n📦 Buyurtma #${orderId}\n💳 ${payLabel}: ${total ? total.toLocaleString() + " so'm ✅" : ''}`
+    );
+  } catch (e) { console.log('notifyCustomer xatolik:', e.message); }
 }
 
 const MAIN_MENU = {
@@ -89,16 +86,22 @@ router.post('/webhook', async (req, res) => {
   try {
     const update = req.body;
 
-    // Contact yuborilganda
+    // Contact yuborilganda — DB ga saqlash
     if (update.message?.contact) {
       const chatId = update.message.chat.id;
       const contact = update.message.contact;
       const from = update.message.from;
-      // Telefon → chat_id ni saqlash
       let phone = contact.phone_number;
       if (!phone.startsWith('+')) phone = '+' + phone;
-      phoneToChat.set(phone, chatId);
-      waitingPhone.delete(from.id);
+
+      // DB ga telegramChatId saqlash
+      try {
+        await prisma.customer.upsert({
+          where: { phone },
+          update: { telegramChatId: String(chatId) },
+          create: { phone, telegramChatId: String(chatId) },
+        });
+      } catch (e) { console.log('DB xatolik:', e.message); }
 
       await sendMessage(chatId,
         `✅ Rahmat! Raqamingiz bog'landi:\n📞 ${phone}\n\nEndi buyurtma berib, holati haqida xabar olasiz! 🎉`,
@@ -117,39 +120,24 @@ router.post('/webhook', async (req, res) => {
     const text = message.text.trim();
     const userId = message.from.id;
 
-    // /start
     if (text === '/start' || text === '/menu') {
       waitingFeedback.delete(userId);
-      // Telefon raqam so'rash
-      if (!waitingPhone.has(userId)) {
-        waitingPhone.add(userId);
-        await sendMessage(chatId,
-          `👋 *Rahmat Chef*ga xush kelibsiz!\n\n🍰 Premium shirinliklar va ☕️ ichimliklar\n\n📱 Buyurtma holatini bilish uchun telefon raqamingizni ulashing:`,
-          { reply_markup: CONTACT_BUTTON }
-        );
-        return;
-      }
       await sendMessage(chatId,
-        `👋 *Rahmat Chef*ga xush kelibsiz!\n\nKerakli bo'limni tanlang:`,
-        { reply_markup: MAIN_MENU }
+        `👋 *Rahmat Chef*ga xush kelibsiz!\n\n🍰 Premium shirinliklar va ☕️ ichimliklar\n\n📱 Buyurtma holatini bilish uchun raqamingizni ulashing:`,
+        { reply_markup: CONTACT_BUTTON }
       );
       return;
     }
 
-    // Orqaga
     if (text === '⬅️ Orqaga') {
       waitingFeedback.delete(userId);
       await sendMessage(chatId, '🏠 Bosh menyu', { reply_markup: MAIN_MENU });
       return;
     }
 
-    // Izoh kutilayotgan
     if (waitingFeedback.has(userId)) {
       waitingFeedback.delete(userId);
-      await sendMessage(chatId,
-        `✅ Rahmat! Izohingiz qabul qilindi. 🙏`,
-        { reply_markup: MAIN_MENU }
-      );
+      await sendMessage(chatId, `✅ Rahmat! Izohingiz qabul qilindi. 🙏`, { reply_markup: MAIN_MENU });
       const from = message.from;
       await sendMessage(ADMIN_CHAT_ID,
         `💬 *Yangi izoh*\n\n👤 ${from.first_name || ''} ${from.last_name || ''}\n🆔 @${from.username || "yo'q"}\n\n📝 *Matn:*\n${text}`
@@ -167,7 +155,7 @@ router.post('/webhook', async (req, res) => {
 
     if (text === '📍 Bizning manzil') {
       await sendMessage(chatId,
-        `📍 *Bizning manzilimiz:*\n\n${ADDRESS}\n\n🚗 Ko'kcha masjidi yonida\n🕒 24/7 ochiq`,
+        `📍 *Bizning manzilimiz:*\n\n${ADDRESS}\n\n🕒 24/7 ochiq`,
         { reply_markup: MAIN_MENU }
       );
       await sendLocation(chatId, LATITUDE, LONGITUDE);
@@ -184,18 +172,12 @@ router.post('/webhook', async (req, res) => {
 
     if (text === '💬 Izoh qoldirish') {
       waitingFeedback.add(userId);
-      await sendMessage(chatId,
-        `💬 Fikr, taklif yoki shikoyatingizni yozing:`,
-        { reply_markup: BACK_MENU }
-      );
+      await sendMessage(chatId, `💬 Fikr, taklif yoki shikoyatingizni yozing:`, { reply_markup: BACK_MENU });
       return;
     }
 
     if (text === '📞 Raqamni yuborish') {
-      await sendMessage(chatId,
-        `📞 Raqamingizni ulashing:`,
-        { reply_markup: CONTACT_BUTTON }
-      );
+      await sendMessage(chatId, `📞 Raqamingizni ulashing:`, { reply_markup: CONTACT_BUTTON });
       return;
     }
 
@@ -204,7 +186,6 @@ router.post('/webhook', async (req, res) => {
   } catch (e) { console.log('Bot xatolik:', e.message); }
 });
 
-// Webhook o'rnatish
 router.get('/set-webhook', async (req, res) => {
   try {
     const webhookUrl = 'https://claude-production-0b03.up.railway.app/api/bot/webhook';
@@ -233,7 +214,5 @@ router.get('/webhook-info', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Orders.js dan chaqirish uchun export
 module.exports = router;
 module.exports.notifyCustomer = notifyCustomer;
-module.exports.phoneToChat = phoneToChat;
